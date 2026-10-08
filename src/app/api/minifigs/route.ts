@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const instances = await prisma.setInstance.findMany({
     include: {
-      definition: { include: { inventory: { where: { sectionName: "Minifigur" }, include: { part: true, color: true } } } },
+      definition: { include: { inventory: { where: { OR: [{ sectionName: "Minifigur" }, { part: { categoryName: { contains: "minifig", mode: "insensitive" } } }] }, include: { part: true, color: true } } } },
       missing: true,
     },
     orderBy: { createdAt: "desc" },
