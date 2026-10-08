@@ -1,33 +1,96 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { brickOwlConfigured, fetchBrickOwlPrice, findBrickOwlId } from "@/lib/brickowl";
+import { apiMayReplace, manualPartCacheKey, manualPriceCurrencies, manualQuoteKey, manualSetCacheKey } from "@/lib/manual-price";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
-const schema = z.object({ setInstanceId: z.string().optional(), inventoryItemId: z.string().optional(), refresh: z.boolean().default(false) }).refine((value) => Number(Boolean(value.setInstanceId)) + Number(Boolean(value.inventoryItemId)) === 1);
-const cacheMs = 24 * 60 * 60 * 1000;
-export async function GET() { return NextResponse.json({ provider: "BrickOwl", configured: brickOwlConfigured(), country: process.env.BRICKOWL_COUNTRY || "DE", cacheHours: 24, approvalRequired: true }); }
+
+const manualPriceSchema = z.object({
+  avgPrice: z.number().finite().min(0).max(1_000_000).refine((value) => Number(value.toFixed(2)) === value, "Höchstens zwei Nachkommastellen."),
+  currencyCode: z.enum(manualPriceCurrencies).default("EUR"),
+});
+const schema = z.object({
+  setInstanceId: z.string().optional(),
+  inventoryItemId: z.string().optional(),
+  refresh: z.boolean().default(false),
+  manualPrice: manualPriceSchema.optional(),
+  clearManual: z.boolean().default(false),
+}).refine((value) => Number(Boolean(value.setInstanceId)) + Number(Boolean(value.inventoryItemId)) === 1, "Genau ein Ziel.")
+  .refine((value) => !(value.manualPrice && value.clearManual), "Preis speichern und entfernen schließen sich aus.");
+
+type Target = {
+  uiKey: string;
+  manualKey: string;
+  itemType: "SET" | "PART";
+  itemNumber: string;
+  boid: string | null;
+  elementId?: string;
+  inventoryItemId?: string;
+  setInstanceId?: string;
+  partId?: string;
+  colorId?: string;
+};
+
+async function resolveTarget(input: { setInstanceId?: string; inventoryItemId?: string }): Promise<Target | null> {
+  if (input.setInstanceId) {
+    const row = await prisma.setInstance.findUnique({ where: { id: input.setInstanceId }, select: { id: true, definition: { select: { setNumber: true, brickowlId: true } } } });
+    if (!row) return null;
+    return { uiKey: `set:${row.id}`, manualKey: manualSetCacheKey(row.id), itemType: "SET", itemNumber: row.definition.setNumber, boid: row.definition.brickowlId, setInstanceId: row.id };
+  }
+  const row = await prisma.inventoryItem.findUnique({ where: { id: input.inventoryItemId }, select: { id: true, legoElementId: true, brickowlId: true, partId: true, colorId: true, part: { select: { partNumber: true } } } });
+  if (!row) return null;
+  return { uiKey: `part:${row.partId}:${row.colorId}`, manualKey: manualPartCacheKey(row.partId, row.colorId), itemType: "PART", itemNumber: row.part.partNumber, boid: row.brickowlId, elementId: row.legoElementId ?? undefined, inventoryItemId: row.id, partId: row.partId, colorId: row.colorId };
+}
+
+export async function GET() {
+  const stored = await prisma.brickOwlPrice.findMany({ where: { source: "manual" }, orderBy: { fetchedAt: "desc" } });
+  const manualPrices = stored.flatMap((row) => {
+    const key = manualQuoteKey(row);
+    if (!key) return [];
+    return [{ key, source: "manual" as const, currencyCode: row.currencyCode, avgPrice: row.avgPrice, minPrice: row.minPrice, maxPrice: row.maxPrice, fetchedAt: row.fetchedAt }];
+  });
+  return NextResponse.json({ provider: "BrickOwl", configured: brickOwlConfigured(), country: process.env.BRICKOWL_COUNTRY || "DE", cacheHours: 24, approvalRequired: true, manualPrices });
+}
 
 export async function POST(request: NextRequest) {
   const parsed = schema.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ error: "Wähle genau ein Set-Exemplar oder eine Inventarposition aus." }, { status: 400 });
-  if (!brickOwlConfigured()) return NextResponse.json({ error: "BrickOwl API-Schlüssel fehlt. Hinterlege BRICKOWL_API_KEY in .env und starte den App-Container neu." }, { status: 503 });
+  if (!parsed.success) return NextResponse.json({ error: "Wähle genau ein Set-Exemplar oder eine Inventarposition aus und gib einen gültigen Preis an." }, { status: 400 });
   try {
     const input = parsed.data;
-    const item = input.setInstanceId
-      ? await prisma.setInstance.findUnique({ where: { id: input.setInstanceId }, select: { definition: { select: { setNumber: true, brickowlId: true } } } }).then((row) => row ? { type: "SET" as const, number: row.definition.setNumber, boid: row.definition.brickowlId, elementId: undefined } : null)
-      : await prisma.inventoryItem.findUnique({ where: { id: input.inventoryItemId }, select: { id: true, legoElementId: true, brickowlId: true, part: { select: { partNumber: true } } } }).then((row) => row ? { type: "PART" as const, number: row.part.partNumber, boid: row.brickowlId, inventoryItemId: row.id, elementId: row.legoElementId ?? undefined } : null);
-    if (!item) return NextResponse.json({ error: "Set oder Inventarposition nicht gefunden." }, { status: 404 });
-    const lookup = { itemType: item.type, itemNumber: item.number, ...(item.elementId ? { elementId: item.elementId } : {}), newOrUsed: "U" as const, guideType: "sold" as const };
-    const boid = item.boid ?? await findBrickOwlId(lookup);
-    if (!item.boid && item.type === "PART" && item.inventoryItemId) await prisma.inventoryItem.update({ where: { id: item.inventoryItemId }, data: { brickowlId: boid } });
-    if (!item.boid && input.setInstanceId) await prisma.setDefinition.updateMany({ where: { setNumber: item.number, brickowlId: null }, data: { brickowlId: boid } });
+    const target = await resolveTarget(input);
+    if (!target) return NextResponse.json({ error: "Set oder Inventarposition nicht gefunden." }, { status: 404 });
+
+    if (input.clearManual) {
+      await prisma.brickOwlPrice.deleteMany({ where: { cacheKey: target.manualKey, source: "manual" } });
+      return NextResponse.json({ cleared: true, key: target.uiKey });
+    }
+
+    if (input.manualPrice) {
+      const price = input.manualPrice;
+      const data = {
+        boid: "manual", itemType: target.itemType, itemNumber: target.itemNumber, newOrUsed: "U", guideType: "manual", currencyCode: price.currencyCode,
+        minPrice: price.avgPrice, maxPrice: price.avgPrice, avgPrice: price.avgPrice, qtyAvgPrice: price.avgPrice, unitQuantity: null, totalQuantity: null,
+        source: "manual", setInstanceId: target.setInstanceId ?? null, partId: target.partId ?? null, colorId: target.colorId ?? null, fetchedAt: new Date(),
+      };
+      const saved = await prisma.brickOwlPrice.upsert({ where: { cacheKey: target.manualKey }, create: { cacheKey: target.manualKey, ...data }, update: data });
+      return NextResponse.json({ price: saved, manual: true, cached: true, key: target.uiKey });
+    }
+
+    const manual = await prisma.brickOwlPrice.findUnique({ where: { cacheKey: target.manualKey } });
+    if (manual?.source === "manual") return NextResponse.json({ price: manual, manual: true, cached: true, refreshSkipped: true, key: target.uiKey });
+    if (!brickOwlConfigured()) return NextResponse.json({ error: "BrickOwl API-Schlüssel fehlt. Hinterlege BRICKOWL_API_KEY in .env und starte den App-Container neu, oder trage den Preis manuell ein." }, { status: 503 });
+
+    const lookup = { itemType: target.itemType, itemNumber: target.itemNumber, ...(target.elementId ? { elementId: target.elementId } : {}), newOrUsed: "U" as const, guideType: "sold" as const };
+    const boid = target.boid ?? await findBrickOwlId(lookup);
+    if (!target.boid && target.itemType === "PART" && target.inventoryItemId) await prisma.inventoryItem.update({ where: { id: target.inventoryItemId }, data: { brickowlId: boid } });
+    if (!target.boid && target.setInstanceId) await prisma.setDefinition.updateMany({ where: { setNumber: target.itemNumber, brickowlId: null }, data: { brickowlId: boid } });
     const cacheKey = `${boid}|used|price_history`;
     const cached = await prisma.brickOwlPrice.findUnique({ where: { cacheKey } });
-    if (cached && !input.refresh && Date.now() - cached.fetchedAt.getTime() < cacheMs) return NextResponse.json({ price: cached, cached: true });
+    if (!apiMayReplace(cached, input.refresh)) return NextResponse.json({ price: cached, cached: true, manual: false, key: target.uiKey });
     const price = await fetchBrickOwlPrice(lookup, boid);
-    const saved = await prisma.brickOwlPrice.upsert({ where: { cacheKey }, create: { cacheKey, ...price }, update: { ...price } });
-    return NextResponse.json({ price: saved, cached: false });
+    const saved = await prisma.brickOwlPrice.upsert({ where: { cacheKey }, create: { cacheKey, ...price, source: "api" }, update: { ...price, source: "api" } });
+    return NextResponse.json({ price: saved, cached: false, manual: false, key: target.uiKey });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "BrickOwl-Preis konnte nicht geladen werden." }, { status: 502 });
   }

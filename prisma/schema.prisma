@@ -52,6 +52,7 @@ model SetInstance {
   changes               InventoryChange[]
   orders                PurchaseOrderLine[]
   photos                SetPhoto[]
+  brickOwlPrices        BrickOwlPrice[]
   createdAt             DateTime            @default(now())
 
   @@index([definitionId])
@@ -331,9 +332,15 @@ model BrickOwlPrice {
   qtyAvgPrice      Float?
   unitQuantity     Int?
   totalQuantity    Int?
-  fetchedAt        DateTime @default(now())
+  fetchedAt        DateTime     @default(now())
+  source           String       @default("api")
+  setInstanceId    String?
+  setInstance      SetInstance? @relation(fields: [setInstanceId], references: [id], onDelete: Cascade)
+  partId           String?
+  colorId          String?
 
   @@index([itemType, itemNumber])
+  @@index([source])
 }
 
 model ImportMetadata {
