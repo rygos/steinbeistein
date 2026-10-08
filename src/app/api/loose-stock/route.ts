@@ -12,6 +12,12 @@ export async function GET() {
     prisma.loosePartStock.findMany({ include: { part: true, color: true, location: true }, orderBy: [{ part: { partNumber: "asc" } }, { color: { name: "asc" } }, { location: { name: "asc" } }] }),
     prisma.missingPart.findMany({ where: { quantity: { gt: 0 } }, select: { quantity: true, inventoryItem: { select: { partId: true, colorId: true, part: { select: { id: true, partNumber: true, name: true, imageUrl: true } }, color: { select: { id: true, name: true, rgb: true } } } }, instance: { select: { id: true, nickname: true, definition: { select: { setNumber: true, name: true } } } } } }),
   ]);
+  const inventoryImages = await prisma.inventoryItem.findMany({
+    where: { imageUrl: { not: null }, OR: stock.map((row) => ({ partId: row.partId, colorId: row.colorId })) },
+    select: { partId: true, colorId: true, imageUrl: true },
+  });
+  const colorImageByKey = new Map<string, string>();
+  for (const item of inventoryImages) if (item.imageUrl) colorImageByKey.set(`${item.partId}|${item.colorId}`, item.imageUrl);
   const missingByKey = new Map<string, { quantity: number; sets: { instanceId: string; name: string; setNumber: string; quantity: number }[] }>();
   for (const row of missing) {
     const key = `${row.inventoryItem.partId}|${row.inventoryItem.colorId}`;
@@ -38,7 +44,7 @@ export async function GET() {
   const stockRows = [...stockGroups.entries()].map(([key, row]) => {
     const demand = missingByKey.get(key) ?? { quantity: 0, sets: [] };
     const costs = costTotals.get(key);
-    return { id: key, part: { id: row.part.id, number: row.part.partNumber, name: row.part.name, imageUrl: row.part.imageUrl }, color: { id: row.color.id, sourceId: row.color.rebrickableId, name: row.color.name, rgb: row.color.rgb }, quantity: row.quantity, unitCost: costs ? costs.amount / costs.quantity : null, locations: row.locations, missingQuantity: demand.quantity, covered: Math.min(row.quantity, demand.quantity), surplus: Math.max(0, row.quantity - demand.quantity), toBuy: Math.max(0, demand.quantity - row.quantity), sets: demand.sets };
+    return { id: key, part: { id: row.part.id, number: row.part.partNumber, name: row.part.name, imageUrl: colorImageByKey.get(key) ?? row.part.imageUrl }, color: { id: row.color.id, sourceId: row.color.rebrickableId, name: row.color.name, rgb: row.color.rgb }, quantity: row.quantity, unitCost: costs ? costs.amount / costs.quantity : null, locations: row.locations, missingQuantity: demand.quantity, covered: Math.min(row.quantity, demand.quantity), surplus: Math.max(0, row.quantity - demand.quantity), toBuy: Math.max(0, demand.quantity - row.quantity), sets: demand.sets };
   });
   const quantityByKey = new Map([...stockGroups.entries()].map(([key, row]) => [key, row.quantity]));
   const summary = [...missingByKey.entries()].map(([key, value]) => ({ key, ...value, available: quantityByKey.get(key) ?? 0 })).reduce((acc, row) => ({ needed: acc.needed + row.quantity, covered: acc.covered + Math.min(row.quantity, row.available), toBuy: acc.toBuy + Math.max(0, row.quantity - row.available) }), { needed: 0, covered: 0, toBuy: 0 });
