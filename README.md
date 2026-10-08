@@ -90,7 +90,7 @@ Der API-Key wird ausschließlich serverseitig gelesen und nicht an Browsercode g
 
 ## Backup und Wiederherstellung
 
-Die Diagnoseansicht bietet zusätzlich einen JSON-Export und einen Wiederherstellungsimport. Der Import führt anhand externer IDs und Setnummern zusammen und ist additiv: vorhandene Exemplare, Fehlmengen und Teile werden nicht überschrieben. Das JSON-Format ist versioniert (`lego-fehlteile-backup`, Version 1). Für eine vollständige PostgreSQL-Wiederherstellung bleibt ein SQL-Backup die richtige Wahl.
+Die Diagnoseansicht bietet zusätzlich einen JSON-Export und einen Wiederherstellungsimport. Der Import führt anhand externer IDs und Setnummern zusammen und ist additiv: vorhandene Exemplare, Fehlmengen und Teile werden nicht überschrieben. Das JSON-Format ist versioniert (`lego-fehlteile-backup`, Version 1) und enthält auch manuell eingetragene BrickOwl-Preise. Für eine vollständige PostgreSQL-Wiederherstellung bleibt ein SQL-Backup die richtige Wahl.
 
 SQL-Backup innerhalb des Compose-Projekts:
 
@@ -145,7 +145,7 @@ BrickOwl dokumentiert den API-Key, die tägliche Quote und die Katalog- sowie Pr
 
 Pro Set-Exemplar können bis zu 20 JPG-, PNG- oder WebP-Fotos mit jeweils 6 MB gespeichert werden. Bestellungen erfassen Händler, Bestellnummer, Versand, Währung, Teilemenge und Einzelpreis. Beim Verbuchen einer Lieferung werden erhaltene Bestellpositionen fortgeschrieben; Teilmengen bleiben als Teillieferung sichtbar. Der eigene Einstandspreis und der aktuelle BrickOwl-Marktwert sind getrennte Angaben. Verkaufs- und QR-Lageretiketten lassen sich über den Browser drucken. Der QR-Code öffnet das zugehörige Exemplar direkt.
 
-Die PWA stellt App-Shell und Navigation nach einem vorherigen Online-Aufruf offline bereit; API-Änderungen benötigen weiterhin eine Verbindung. Der zuletzt verwendete Setfilter, die Sortierung und Suche werden lokal gespeichert. Änderungen der Inventur lassen sich direkt nach dem Speichern rückgängig machen. Fehlerzustand, falsche Farbe und Notizen werden am geprüften Inventarteil abgelegt. Setfotos liegen in der PostgreSQL-Datenbank und sind im JSON-Backup enthalten.
+Die PWA stellt App-Shell und Navigation nach einem vorherigen Online-Aufruf offline bereit; API-Änderungen benötigen weiterhin eine Verbindung. Der zuletzt verwendete Setfilter, die Sortierung und Suche werden lokal gespeichert. Änderungen der Inventur lassen sich direkt nach dem Speichern rückgängig machen. Fehlerzustand, falsche Farbe und Notizen werden am geprüften Inventarteil abgelegt. Setfotos und manuelle BrickOwl-Preise liegen in der PostgreSQL-Datenbank und sind im JSON-Backup enthalten.
 
 ### Automatische Datenbank-Backups
 

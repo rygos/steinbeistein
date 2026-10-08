@@ -1,17 +1,41 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
+import { manualPartCacheKey, manualPriceCurrencies, manualSetCacheKey } from "@/lib/manual-price";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 const records = z.array(z.record(z.unknown()));
-const backupSchema = z.object({ format: z.literal("lego-fehlteile-backup"), version: z.literal(1), exportedAt: z.string(), definitions: records, parts: records, colors: records, instances: records, inventory: records, missing: records, reviews: records, shopping: records, imports: records, locations: records.default([]), looseStock: records.default([]), sessions: records.default([]), changes: records.default([]), orders: records.default([]), orderLines: records.default([]), photos: records.default([]), prices: records.default([]) });
+const manualBrickOwlPriceSchema = z.object({
+  boid: z.string(),
+  itemType: z.enum(["SET", "PART"]),
+  itemNumber: z.string(),
+  newOrUsed: z.string(),
+  guideType: z.string(),
+  currencyCode: z.enum(manualPriceCurrencies),
+  minPrice: z.number().finite().nullable(),
+  maxPrice: z.number().finite().nullable(),
+  avgPrice: z.number().finite().nullable(),
+  qtyAvgPrice: z.number().finite().nullable(),
+  unitQuantity: z.number().int().nullable(),
+  totalQuantity: z.number().int().nullable(),
+  fetchedAt: z.string().datetime(),
+  source: z.literal("manual"),
+  setInstanceId: z.string().nullable(),
+  partId: z.string().nullable(),
+  colorId: z.string().nullable(),
+}).refine((value) => {
+  const hasSet = value.setInstanceId !== null;
+  const hasPart = value.partId !== null && value.colorId !== null;
+  return hasSet !== hasPart && (value.partId === null) === (value.colorId === null);
+});
+const backupSchema = z.object({ format: z.literal("lego-fehlteile-backup"), version: z.literal(1), exportedAt: z.string(), definitions: records, parts: records, colors: records, instances: records, inventory: records, missing: records, reviews: records, shopping: records, imports: records, locations: records.default([]), looseStock: records.default([]), sessions: records.default([]), changes: records.default([]), orders: records.default([]), orderLines: records.default([]), photos: records.default([]), prices: records.default([]), brickOwlManualPrices: z.array(manualBrickOwlPriceSchema).default([]) });
 
 export async function GET() {
-  const [definitions, parts, colors, instances, inventory, missing, reviews, shopping, imports, locations, looseStock, sessions, changes, orders, orderLines, photos, prices] = await Promise.all([
-    prisma.setDefinition.findMany(), prisma.part.findMany(), prisma.color.findMany(), prisma.setInstance.findMany(), prisma.inventoryItem.findMany(), prisma.missingPart.findMany(), prisma.inventoryReview.findMany(), prisma.shoppingItem.findMany(), prisma.importMetadata.findMany(), prisma.storageLocation.findMany(), prisma.loosePartStock.findMany(), prisma.inventorySession.findMany(), prisma.inventoryChange.findMany(), prisma.purchaseOrder.findMany(), prisma.purchaseOrderLine.findMany(), prisma.setPhoto.findMany(), prisma.brickLinkPrice.findMany(),
+  const [definitions, parts, colors, instances, inventory, missing, reviews, shopping, imports, locations, looseStock, sessions, changes, orders, orderLines, photos, prices, brickOwlManualPrices] = await Promise.all([
+    prisma.setDefinition.findMany(), prisma.part.findMany(), prisma.color.findMany(), prisma.setInstance.findMany(), prisma.inventoryItem.findMany(), prisma.missingPart.findMany(), prisma.inventoryReview.findMany(), prisma.shoppingItem.findMany(), prisma.importMetadata.findMany(), prisma.storageLocation.findMany(), prisma.loosePartStock.findMany(), prisma.inventorySession.findMany(), prisma.inventoryChange.findMany(), prisma.purchaseOrder.findMany(), prisma.purchaseOrderLine.findMany(), prisma.setPhoto.findMany(), prisma.brickLinkPrice.findMany(), prisma.brickOwlPrice.findMany({ where: { source: "manual" } }),
   ]);
-  return NextResponse.json({ format: "lego-fehlteile-backup", version: 1, exportedAt: new Date().toISOString(), definitions, parts, colors, instances, inventory, missing, reviews, shopping, imports, locations, looseStock, sessions, changes, orders, orderLines, photos, prices }, { headers: { "Content-Disposition": `attachment; filename="lego-fehlteile-${new Date().toISOString().slice(0, 10)}.json"` } });
+  return NextResponse.json({ format: "lego-fehlteile-backup", version: 1, exportedAt: new Date().toISOString(), definitions, parts, colors, instances, inventory, missing, reviews, shopping, imports, locations, looseStock, sessions, changes, orders, orderLines, photos, prices, brickOwlManualPrices }, { headers: { "Content-Disposition": `attachment; filename="lego-fehlteile-${new Date().toISOString().slice(0, 10)}.json"` } });
 }
 
 export async function POST(request: NextRequest) {
@@ -105,11 +129,49 @@ export async function POST(request: NextRequest) {
         const value = raw as { id: string; cacheKey: string; itemType: string; itemNumber: string; colorBricklinkId?: number | null; newOrUsed: string; guideType: string; currencyCode: string; minPrice?: number | null; maxPrice?: number | null; avgPrice?: number | null; qtyAvgPrice?: number | null; unitQuantity?: number | null; totalQuantity?: number | null; fetchedAt?: string };
         await tx.brickLinkPrice.createMany({ data: [{ ...value, fetchedAt: value.fetchedAt ? new Date(value.fetchedAt) : new Date() }], skipDuplicates: true });
       }
+      let manualPriceCount = 0;
+      for (const value of parsed.data.brickOwlManualPrices) {
+        const setInstanceId = value.setInstanceId ? instanceIds.get(value.setInstanceId) : null;
+        const partId = value.partId ? partIds.get(value.partId) : null;
+        const colorId = value.colorId ? colorIds.get(value.colorId) : null;
+        if (value.setInstanceId && !setInstanceId) continue;
+        if (value.partId && (!partId || !colorId)) continue;
+        const cacheKey = setInstanceId
+          ? manualSetCacheKey(setInstanceId)
+          : partId && colorId
+            ? manualPartCacheKey(partId, colorId)
+            : null;
+        if (!cacheKey) continue;
+        const created = await tx.brickOwlPrice.createMany({
+          data: [{
+            cacheKey,
+            boid: value.boid,
+            itemType: value.itemType,
+            itemNumber: value.itemNumber,
+            newOrUsed: value.newOrUsed,
+            guideType: value.guideType,
+            currencyCode: value.currencyCode,
+            minPrice: value.minPrice,
+            maxPrice: value.maxPrice,
+            avgPrice: value.avgPrice,
+            qtyAvgPrice: value.qtyAvgPrice,
+            unitQuantity: value.unitQuantity,
+            totalQuantity: value.totalQuantity,
+            fetchedAt: new Date(value.fetchedAt),
+            source: "manual",
+            setInstanceId,
+            partId,
+            colorId,
+          }],
+          skipDuplicates: true,
+        });
+        manualPriceCount += created.count;
+      }
       for (const raw of parsed.data.imports) {
         const value = raw as { id: string; setNumber: string; provider: string; externalInventoryId?: string | null; providerVersion?: string | null; importedAt?: string; itemCount: number; result?: string; message?: string | null };
         await tx.importMetadata.createMany({ data: [{ ...value, importedAt: value.importedAt ? new Date(value.importedAt) : new Date() }], skipDuplicates: true });
       }
-      return { definitions: definitionIds.size, instances: instanceIds.size, inventory: itemIds.size };
+      return { definitions: definitionIds.size, instances: instanceIds.size, inventory: itemIds.size, manualPrices: manualPriceCount };
     }, { timeout: 30000 });
     return NextResponse.json({ ok: true, merged: counts });
   } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Backup konnte nicht eingelesen werden." }, { status: 400 }); }

@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PrismaClient } from "@prisma/client";
 import { NextRequest } from "next/server";
+import { manualSetCacheKey } from "@/lib/manual-price";
 
 const testUrl = process.env.TEST_DATABASE_URL;
 const dbSuite = testUrl ? describe : describe.skip;
@@ -9,6 +10,8 @@ dbSuite("manual BrickOwl prices stay put", () => {
   let db: PrismaClient;
   let post: (request: NextRequest) => Promise<Response>;
   let get: () => Promise<Response>;
+  let backupGet: () => Promise<Response>;
+  let backupPost: (request: NextRequest) => Promise<Response>;
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const setNumber = `TEST-PRICE-${suffix}`;
   const partNumber = `TEST-PRICE-PART-${suffix}`;
@@ -33,8 +36,11 @@ dbSuite("manual BrickOwl prices stay put", () => {
     inventoryItemId = item.id;
     await db.missingPart.create({ data: { instanceId, inventoryItemId, quantity: 3 } });
     const route = await import("@/app/api/brickowl/prices/route");
+    const backupRoute = await import("@/app/api/backup/route");
     post = route.POST;
     get = route.GET;
+    backupGet = backupRoute.GET;
+    backupPost = backupRoute.POST;
     delete process.env.BRICKOWL_API_KEY;
   });
 
@@ -87,5 +93,32 @@ dbSuite("manual BrickOwl prices stay put", () => {
   it("rejects a price with more than two decimal places", async () => {
     const rejected = await send({ setInstanceId: instanceId, manualPrice: { avgPrice: 1.234, currencyCode: "EUR" } });
     expect(rejected.status).toBe(400);
+  });
+
+  it("exports and restores a manual set price using the restored instance id", async () => {
+    await send({ setInstanceId: instanceId, manualPrice: { avgPrice: 51.25, currencyCode: "EUR" } });
+    const exported = await backupGet();
+    expect(exported.status).toBe(200);
+    const backup = await exported.json() as {
+      instances: { id: string }[];
+      brickOwlManualPrices: { setInstanceId: string | null; partId: string | null; colorId: string | null; avgPrice: number | null }[];
+      [key: string]: unknown;
+    };
+    expect(backup.brickOwlManualPrices).toContainEqual(expect.objectContaining({ setInstanceId: instanceId, avgPrice: 51.25 }));
+
+    const restoredInstanceId = "restored-" + suffix;
+    const restoredBackup = {
+      ...backup,
+      instances: backup.instances.map((instance) => instance.id === instanceId ? { ...instance, id: restoredInstanceId } : instance),
+      brickOwlManualPrices: backup.brickOwlManualPrices.map((price) => price.setInstanceId === instanceId ? { ...price, setInstanceId: restoredInstanceId } : price),
+    };
+    const restored = await backupPost(new NextRequest("http://localhost/api/backup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(restoredBackup),
+    }));
+    expect(restored.status).toBe(200);
+    const price = await db.brickOwlPrice.findUniqueOrThrow({ where: { cacheKey: manualSetCacheKey(restoredInstanceId) } });
+    expect(price).toMatchObject({ source: "manual", setInstanceId: restoredInstanceId, avgPrice: 51.25, currencyCode: "EUR" });
   });
 });
