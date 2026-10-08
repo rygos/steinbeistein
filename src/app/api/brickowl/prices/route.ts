@@ -44,11 +44,11 @@ async function resolveTarget(input: { setInstanceId?: string; inventoryItemId?: 
 }
 
 export async function GET() {
-  const stored = await prisma.brickOwlPrice.findMany({ where: { source: "manual" }, orderBy: { fetchedAt: "desc" } });
+  const stored = await prisma.brickOwlPrice.findMany({ where: { OR: [{ source: "manual" }, { partId: { not: null }, colorId: { not: null } }, { setInstanceId: { not: null } }] }, orderBy: { fetchedAt: "desc" } });
   const manualPrices = stored.flatMap((row) => {
     const key = manualQuoteKey(row);
     if (!key) return [];
-    return [{ key, source: "manual" as const, currencyCode: row.currencyCode, avgPrice: row.avgPrice, minPrice: row.minPrice, maxPrice: row.maxPrice, fetchedAt: row.fetchedAt }];
+    return [{ key, source: row.source, itemType: row.itemType, itemNumber: row.itemNumber, currencyCode: row.currencyCode, avgPrice: row.avgPrice, minPrice: row.minPrice, maxPrice: row.maxPrice, fetchedAt: row.fetchedAt }];
   });
   return NextResponse.json({ provider: "BrickOwl", configured: brickOwlConfigured(), country: process.env.BRICKOWL_COUNTRY || "DE", cacheHours: 24, approvalRequired: true, manualPrices });
 }
@@ -85,11 +85,18 @@ export async function POST(request: NextRequest) {
     const boid = target.boid ?? await findBrickOwlId(lookup);
     if (!target.boid && target.itemType === "PART" && target.inventoryItemId) await prisma.inventoryItem.update({ where: { id: target.inventoryItemId }, data: { brickowlId: boid } });
     if (!target.boid && target.setInstanceId) await prisma.setDefinition.updateMany({ where: { setNumber: target.itemNumber, brickowlId: null }, data: { brickowlId: boid } });
-    const cacheKey = `${boid}|used|price_history`;
-    const cached = await prisma.brickOwlPrice.findUnique({ where: { cacheKey } });
-    if (!apiMayReplace(cached, input.refresh)) return NextResponse.json({ price: cached, cached: true, manual: false, key: target.uiKey });
+    const associationKey = target.itemType === "PART" ? `part|${target.partId}|${target.colorId}` : `set|${target.itemNumber}`;
+    const cacheKey = `${boid}|used|price_history|${associationKey}`;
+    const cached = await prisma.brickOwlPrice.findUnique({ where: { cacheKey } }) ?? await prisma.brickOwlPrice.findUnique({ where: { cacheKey: `${boid}|used|price_history` } });
+    const association = { setInstanceId: target.setInstanceId ?? null, partId: target.partId ?? null, colorId: target.colorId ?? null };
+    if (cached && !apiMayReplace(cached, input.refresh)) {
+      const saved = cached.cacheKey === cacheKey
+        ? await prisma.brickOwlPrice.update({ where: { id: cached.id }, data: association })
+        : await prisma.brickOwlPrice.create({ data: { cacheKey, boid: cached.boid, itemType: cached.itemType, itemNumber: cached.itemNumber, newOrUsed: cached.newOrUsed, guideType: cached.guideType, currencyCode: cached.currencyCode, minPrice: cached.minPrice, maxPrice: cached.maxPrice, avgPrice: cached.avgPrice, qtyAvgPrice: cached.qtyAvgPrice, unitQuantity: cached.unitQuantity, totalQuantity: cached.totalQuantity, fetchedAt: cached.fetchedAt, source: cached.source, ...association } });
+      return NextResponse.json({ price: saved, cached: true, manual: false, key: target.uiKey });
+    }
     const price = await fetchBrickOwlPrice(lookup, boid);
-    const saved = await prisma.brickOwlPrice.upsert({ where: { cacheKey }, create: { cacheKey, ...price, source: "api" }, update: { ...price, source: "api" } });
+    const saved = await prisma.brickOwlPrice.upsert({ where: { cacheKey }, create: { cacheKey, ...price, ...association, source: "api" }, update: { ...price, ...association, source: "api" } });
     return NextResponse.json({ price: saved, cached: false, manual: false, key: target.uiKey });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "BrickOwl-Preis konnte nicht geladen werden." }, { status: 502 });
