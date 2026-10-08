@@ -1,0 +1,11 @@
+{
+  "name": "Stein für Stein – LEGO Sammlung",
+  "short_name": "Stein für Stein",
+  "description": "LEGO-Sets, Fehlteile und Inventur verwalten.",
+  "lang": "de",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f4f0",
+  "theme_color": "#d92f2f",
+  "icons": [{ "src": "/icon.svg", "sizes": "any 192x192 512x512", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

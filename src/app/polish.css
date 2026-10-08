@@ -1,0 +1,159 @@
+html[data-theme="dark"] .side-nav button,
+html[data-theme="dark"] .side-bottom > button,
+html[data-theme="dark"] .select-wrap select,
+html[data-theme="dark"] .inventory-filters select,
+html[data-theme="dark"] .field-label,
+html[data-theme="dark"] .empty-state b {
+  color: #c3c5bd;
+}
+
+html[data-theme="dark"] .side-nav button:hover,
+html[data-theme="dark"] .side-bottom > button:hover,
+html[data-theme="dark"] .side-nav button.active,
+html[data-theme="dark"] .side-bottom > button.active,
+html[data-theme="dark"] .empty-state b {
+  color: #efefec;
+}
+
+html[data-theme="light"] .side-nav button,
+html[data-theme="light"] .side-bottom > button,
+html[data-theme="light"] .select-wrap select,
+html[data-theme="light"] .inventory-filters select,
+html[data-theme="light"] .field-label,
+html[data-theme="light"] .empty-state b {
+  color: #484a45;
+}
+
+html[data-theme="light"] .side-nav button:hover,
+html[data-theme="light"] .side-bottom > button:hover {
+  background: #e5e4df;
+  color: #20211f;
+}
+
+html[data-theme="light"] .side-nav button.active,
+html[data-theme="light"] .side-bottom > button.active {
+  background: #e2e1dc;
+  color: #20211f;
+}
+
+html[data-theme="dark"] .button.primary:hover {
+  background: #d94b45;
+  color: #fff;
+}
+
+html[data-theme="dark"] .button.secondary:hover,
+html[data-theme="dark"] .button.quiet:hover,
+html[data-theme="dark"] .quantity-controls button:not(:disabled):hover {
+  color: #fff;
+}
+
+html[data-theme="light"] .button.secondary:hover,
+html[data-theme="light"] .button.quiet:hover,
+html[data-theme="light"] .quantity-controls button:not(:disabled):hover {
+  background: #e5e4df;
+  color: #20211f;
+}
+
+html[data-theme="light"] .icon-button:hover,
+html[data-theme="light"] .dialog-close:hover {
+  background: #e5e4df;
+  color: #20211f;
+}
+
+html[data-theme="dark"] .select-wrap,
+html[data-theme="dark"] .select-wrap select,
+html[data-theme="dark"] .inventory-filters select,
+html[data-theme="dark"] .field-label select,
+html[data-theme="dark"] .field-label input,
+html[data-theme="dark"] .detail-view textarea {
+  border-color: #454741;
+  background-color: #292b27;
+  color: #eeefe9;
+  color-scheme: dark;
+}
+
+html[data-theme="dark"] .select-wrap select option,
+html[data-theme="dark"] .inventory-filters select option,
+html[data-theme="dark"] .field-label select option {
+  background: #292b27;
+  color: #eeefe9;
+}
+
+html[data-theme="light"] .select-wrap,
+html[data-theme="light"] .select-wrap select,
+html[data-theme="light"] .inventory-filters select,
+html[data-theme="light"] .field-label select,
+html[data-theme="light"] .field-label input,
+html[data-theme="light"] .detail-view textarea {
+  background-color: #fff;
+  color: #20211f;
+  color-scheme: light;
+}
+
+@media (max-width: 760px) {
+  .heading-actions {
+    flex-wrap: wrap;
+  }
+
+  .heading-actions .button {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 0;
+    padding-inline: 8px;
+    white-space: normal;
+  }
+
+  .heading-actions .button:nth-child(3) {
+    flex-basis: 100%;
+  }
+
+  .part-row {
+    display: grid;
+    grid-template-columns: 46px minmax(0, 1fr) auto auto;
+    gap: 8px;
+    padding: 9px 0;
+  }
+
+  .part-image-wrap {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+  }
+
+  .part-info {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .part-quantity {
+    grid-row: 1;
+  }
+
+  .part-quantity:nth-of-type(3) {
+    grid-column: 3;
+  }
+
+  .part-quantity:nth-of-type(4) {
+    grid-column: 4;
+  }
+
+  .quantity-controls {
+    grid-column: 2 / -1;
+    justify-self: end;
+    gap: 6px;
+  }
+
+  .quantity-controls button,
+  .quantity-controls button.found-button {
+    width: 44px;
+    height: 44px;
+  }
+
+  .quantity-controls button.found-button span {
+    display: none;
+  }
+
+  .mini-found {
+    min-width: 44px;
+    min-height: 44px;
+    justify-content: center;
+  }
+}

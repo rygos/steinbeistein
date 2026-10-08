@@ -1,0 +1,351 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model SetDefinition {
+  id             String          @id @default(cuid())
+  setNumber      String          @unique
+  name           String
+  year           Int?
+  theme          String?
+  imageUrl       String?
+  pieceCount     Int?
+  provider       String          @default("rebrickable")
+  externalId     String?
+  bricklinkId    String?
+  brickowlId     String?
+  importedAt     DateTime        @default(now())
+  refreshedAt    DateTime?
+  importMetadata Json?
+  inventory      InventoryItem[]
+  instances      SetInstance[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+}
+
+model SetInstance {
+  id                    String              @id @default(cuid())
+  definitionId          String
+  definition            SetDefinition       @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+  nickname              String?
+  storageLocationId     String?
+  storageLocation       StorageLocation?    @relation(fields: [storageLocationId], references: [id], onDelete: SetNull)
+  condition             SetCondition?
+  hasInstructions       Boolean             @default(false)
+  instructionsCondition ItemCondition?
+  hasBox                Boolean             @default(false)
+  boxCondition          ItemCondition?
+  notes                 String?
+  collectionStatus      CollectionStatus    @default(IN_COLLECTION)
+  purchasePrice         Float?
+  purchaseCurrency      String              @default("EUR")
+  purchasedAt           DateTime?
+  missing               MissingPart[]
+  reviews               InventoryReview[]
+  shopping              ShoppingItem[]
+  inventorySession      InventorySession?
+  changes               InventoryChange[]
+  orders                PurchaseOrderLine[]
+  photos                SetPhoto[]
+  createdAt             DateTime            @default(now())
+
+  @@index([definitionId])
+}
+
+model InventoryItem {
+  id            String              @id @default(cuid())
+  definitionId  String
+  definition    SetDefinition       @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+  partId        String
+  part          Part                @relation(fields: [partId], references: [id])
+  colorId       String
+  color         Color               @relation(fields: [colorId], references: [id])
+  quantity      Int
+  imageUrl      String?
+  externalId    String?
+  legoElementId String?
+  brickowlId    String?
+  sectionName   String?
+  isManual      Boolean             @default(false)
+  missing       MissingPart[]
+  reviews       InventoryReview[]
+  shopping      ShoppingItem[]
+  changes       InventoryChange[]
+  orders        PurchaseOrderLine[]
+
+  @@unique([definitionId, partId, colorId])
+  @@index([definitionId, partId])
+}
+
+model Part {
+  id            String           @id @default(cuid())
+  rebrickableId String           @unique
+  name          String
+  partNumber    String
+  bricklinkId   String?
+  brickowlId    String?
+  imageUrl      String?
+  categoryId    Int?
+  categoryName  String?
+  colorImages   Json?
+  inventory     InventoryItem[]
+  looseStock    LoosePartStock[]
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+}
+
+model Color {
+  id            String           @id @default(cuid())
+  rebrickableId Int              @unique
+  name          String
+  rgb           String?
+  bricklinkId   Int?
+  brickowlId    String?
+  inventory     InventoryItem[]
+  looseStock    LoosePartStock[]
+}
+
+model StorageLocation {
+  id          String           @id @default(cuid())
+  name        String           @unique
+  description String?
+  instances   SetInstance[]
+  looseStock  LoosePartStock[]
+  createdAt   DateTime         @default(now())
+}
+
+model LoosePartStock {
+  id          String           @id @default(cuid())
+  partId      String
+  part        Part             @relation(fields: [partId], references: [id], onDelete: Cascade)
+  colorId     String
+  color       Color            @relation(fields: [colorId], references: [id], onDelete: Cascade)
+  quantity    Int
+  locationId  String?
+  locationKey String           @default("none")
+  location    StorageLocation? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  unitCost    Float?
+  updatedAt   DateTime         @updatedAt
+
+  @@unique([partId, colorId, locationKey])
+}
+
+model InventorySession {
+  instanceId    String      @id
+  instance      SetInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  currentItemId String?
+  groupBy       String      @default("number")
+  onlyUnchecked Boolean     @default(false)
+  updatedAt     DateTime    @updatedAt
+}
+
+enum SetCondition {
+  LIKE_NEW
+  GOOD
+  PLAYED
+  DAMAGED
+}
+
+enum ItemCondition {
+  MINT
+  VERY_GOOD
+  GOOD
+  WORN
+  DAMAGED
+}
+
+model MissingPart {
+  id              String        @id @default(cuid())
+  instanceId      String
+  instance        SetInstance   @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  inventoryItemId String
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+  quantity        Int
+  updatedAt       DateTime      @updatedAt
+
+  @@unique([instanceId, inventoryItemId])
+  @@index([instanceId])
+}
+
+model InventoryReview {
+  instanceId      String
+  instance        SetInstance         @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  inventoryItemId String
+  inventoryItem   InventoryItem       @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+  reviewedAt      DateTime            @default(now())
+  status          InventoryItemStatus @default(PRESENT)
+  note            String?
+
+  @@id([instanceId, inventoryItemId])
+  @@index([instanceId, reviewedAt])
+}
+
+enum ShoppingStatus {
+  WANTED
+  ORDERED
+  RECEIVED
+}
+
+model ShoppingItem {
+  id              String         @id @default(cuid())
+  instanceId      String
+  instance        SetInstance    @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  inventoryItemId String
+  inventoryItem   InventoryItem  @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+  quantity        Int
+  status          ShoppingStatus @default(WANTED)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@unique([instanceId, inventoryItemId, status])
+  @@index([instanceId, status])
+}
+
+enum CollectionStatus {
+  IN_COLLECTION
+  UNCHECKED
+  IN_PROGRESS
+  DISPLAYED
+  STORED
+  FOR_SALE
+}
+
+enum InventoryItemStatus {
+  PRESENT
+  DAMAGED
+  WRONG_COLOR
+  OTHER
+}
+
+enum PurchaseOrderStatus {
+  ORDERED
+  PARTIAL
+  RECEIVED
+  CANCELLED
+}
+
+model InventoryChange {
+  id               String               @id @default(cuid())
+  instanceId       String
+  instance         SetInstance          @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  inventoryItemId  String
+  inventoryItem    InventoryItem        @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+  mutationId       String?              @unique
+  beforeMissing    Int
+  afterMissing     Int
+  beforeReviewed   Boolean
+  afterReviewed    Boolean
+  beforeStatus     InventoryItemStatus?
+  afterStatus      InventoryItemStatus?
+  beforeReviewNote String?
+  afterReviewNote  String?
+  reason           String?
+  beforeShopping   Json?
+  afterShopping    Json?
+  stockAllocations Json?
+  undoneAt         DateTime?
+  createdAt        DateTime             @default(now())
+
+  @@index([instanceId, createdAt])
+}
+
+model PurchaseOrder {
+  id           String              @id @default(cuid())
+  supplier     String
+  orderNumber  String?
+  orderedAt    DateTime            @default(now())
+  shippingCost Float               @default(0)
+  currency     String              @default("EUR")
+  notes        String?
+  status       PurchaseOrderStatus @default(ORDERED)
+  lines        PurchaseOrderLine[]
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+}
+
+model PurchaseOrderLine {
+  id               String        @id @default(cuid())
+  orderId          String
+  order            PurchaseOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  instanceId       String
+  instance         SetInstance   @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  inventoryItemId  String
+  inventoryItem    InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+  quantity         Int
+  receivedQuantity Int           @default(0)
+  unitPrice        Float?
+
+  @@unique([orderId, instanceId, inventoryItemId])
+  @@index([instanceId, inventoryItemId])
+}
+
+model SetPhoto {
+  id         String      @id @default(cuid())
+  instanceId String
+  instance   SetInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  name       String
+  mimeType   String
+  data       String      @db.Text
+  createdAt  DateTime    @default(now())
+
+  @@index([instanceId, createdAt])
+}
+
+model BrickLinkPrice {
+  id               String   @id @default(cuid())
+  cacheKey         String   @unique
+  itemType         String
+  itemNumber       String
+  colorBricklinkId Int?
+  newOrUsed        String
+  guideType        String
+  currencyCode     String
+  minPrice         Float?
+  maxPrice         Float?
+  avgPrice         Float?
+  qtyAvgPrice      Float?
+  unitQuantity     Int?
+  totalQuantity    Int?
+  fetchedAt        DateTime @default(now())
+
+  @@index([itemType, itemNumber, colorBricklinkId])
+}
+
+model BrickOwlPrice {
+  id               String   @id @default(cuid())
+  cacheKey         String   @unique
+  boid             String
+  itemType         String
+  itemNumber       String
+  newOrUsed        String
+  guideType        String
+  currencyCode     String   @default("GBP")
+  minPrice         Float?
+  maxPrice         Float?
+  avgPrice         Float?
+  qtyAvgPrice      Float?
+  unitQuantity     Int?
+  totalQuantity    Int?
+  fetchedAt        DateTime @default(now())
+
+  @@index([itemType, itemNumber])
+}
+
+model ImportMetadata {
+  id                  String   @id @default(cuid())
+  setNumber           String
+  provider            String
+  externalInventoryId String?
+  providerVersion     String?
+  importedAt          DateTime @default(now())
+  itemCount           Int
+  result              String   @default("success")
+  message             String?
+
+  @@index([setNumber, importedAt])
+}
