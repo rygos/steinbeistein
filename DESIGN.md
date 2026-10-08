@@ -38,6 +38,7 @@ Base unit 4px. Spacing tokens: 4, 8, 12, 16, 24, 32, 40, 48. Card radius 16px, c
 - Inventory row: fixed image well, clickable part preview, part identity, quantity controls, found state; suitable for virtualization/pagination at the API boundary.
 - Part image preview: keyboard-focusable thumbnail buttons open the shared native modal dialog with contain-fit artwork, caption, visible close control, Escape dismissal, and a dimmed backdrop.
 - Global missing-parts list: grouped by part and color, with a compact labeled selector for color, part number, or total missing quantity.
+- Minifigure parts page: collection-wide part/color groups with the owning set instances, missing quantities, image preview, search, and sort controls; uses the global-list row and summary primitives.
 - Set artwork: constrained image frame in the overview; activation opens the shared image dialog with contain-fit artwork and the same dismissal behavior.
 - Feedback: inline loading, success and error messages; no blocking dialog for common quantity changes.
 

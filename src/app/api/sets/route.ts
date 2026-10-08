@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
   try {
     let definition = await prisma.setDefinition.findUnique({ where: { setNumber }, include: { inventory: true } });
     const importInfo = definition?.importMetadata;
-    const needsMinifigImport = Boolean(definition && (!importInfo || typeof importInfo !== "object" || !("minifigInventoryVersion" in importInfo)));
+    const needsMinifigImport = Boolean(definition && (!importInfo || typeof importInfo !== "object" || !("minifigInventoryVersion" in importInfo) || importInfo.minifigInventoryVersion !== 2));
     if (parsed.data.previewRefresh && !definition) return NextResponse.json({ error: "Eine Aktualisierungsvorschau ist nur für bereits importierte Sets verfügbar." }, { status: 404 });
     if (!definition || parsed.data.forceRefresh || parsed.data.previewRefresh || needsMinifigImport) {
       const matches = await legoProvider.searchSets(setNumber);
@@ -79,9 +79,9 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ preview: true, inventoryDelta: { added, removed, changed, addedCount: added.length, removedCount: removed.length, changedCount: changed.length } });
       }
       definition = await prisma.$transaction(async (tx) => {
-        const importMetadata = { provider: "Rebrickable API v3", downloadedRows: inventoryResponse.results.length, normalizedRows: rows.length, minifigInventoryVersion: 1, minifigCount: inventoryResponse.minifigCount ?? 0, minifigPartRows: inventoryResponse.minifigPartRows ?? 0 };
+        const importMetadata = { provider: "Rebrickable API v3", downloadedRows: inventoryResponse.results.length, normalizedRows: rows.length, minifigInventoryVersion: 2, minifigCount: inventoryResponse.minifigCount ?? 0, minifigPartRows: inventoryResponse.minifigPartRows ?? 0 };
         const def = await tx.setDefinition.upsert({ where: { setNumber: selected.set_num }, create: { setNumber: selected.set_num, name: selected.name, year: selected.year, theme: themeName, imageUrl: selected.set_img_url, pieceCount: selected.num_parts, provider: "rebrickable", externalId: String(inventoryResponse.id ?? ""), importedAt: new Date(), importMetadata }, update: { name: selected.name, year: selected.year, theme: themeName, imageUrl: selected.set_img_url, pieceCount: selected.num_parts, refreshedAt: new Date() } });
-        if (parsed.data.forceRefresh || !(await tx.inventoryItem.count({ where: { definitionId: def.id } }))) {
+        if (parsed.data.forceRefresh || needsMinifigImport || !(await tx.inventoryItem.count({ where: { definitionId: def.id } }))) {
           const old = await tx.inventoryItem.findMany({ where: { definitionId: def.id }, include: { part: true, color: true } });
           const oldKeys = new Map(old.map((item) => [`${item.part.rebrickableId}|${item.color.rebrickableId}`, item]));
           const normalizedKeys = new Set(rows.map((row) => `${row.part.part_num}|${row.color.id}`));
@@ -95,13 +95,13 @@ export async function POST(request: NextRequest) {
           const colorMap = new Map((await tx.color.findMany({ where: { rebrickableId: { in: colors.map((color) => color.rebrickableId) } } })).map((color) => [color.rebrickableId, color]));
           const inventoryRows = rows.map((row) => ({ row, part: partMap.get(row.part.part_num)!, color: colorMap.get(row.color.id)! }));
           if (!old.length) {
-            await tx.inventoryItem.createMany({ data: inventoryRows.map(({ row, part, color }) => ({ definitionId: def.id, partId: part.id, colorId: color.id, quantity: row.quantity, imageUrl: row.part.part_img_url ?? part.imageUrl, externalId: String(row.id ?? ""), legoElementId: row.element_id ?? null })) });
+            await tx.inventoryItem.createMany({ data: inventoryRows.map(({ row, part, color }) => ({ definitionId: def.id, partId: part.id, colorId: color.id, quantity: row.quantity, imageUrl: row.part.part_img_url ?? part.imageUrl, externalId: String(row.id ?? ""), legoElementId: row.element_id ?? null, sectionName: row.is_minifig_part ? "Minifigur" : null })) });
           } else {
             for (const { row, part, color } of inventoryRows) {
               const existing = oldKeys.get(`${row.part.part_num}|${row.color.id}`);
               const maxMissing = existing ? await tx.missingPart.aggregate({ where: { inventoryItemId: existing.id }, _max: { quantity: true } }) : null;
               const preservedMissing = maxMissing?._max.quantity ?? 0;
-              await tx.inventoryItem.upsert({ where: { definitionId_partId_colorId: { definitionId: def.id, partId: part.id, colorId: color.id } }, create: { definitionId: def.id, partId: part.id, colorId: color.id, quantity: row.quantity, imageUrl: row.part.part_img_url ?? part.imageUrl, externalId: String(row.id ?? ""), legoElementId: row.element_id ?? null }, update: { quantity: Math.max(row.quantity, preservedMissing), imageUrl: row.part.part_img_url ?? part.imageUrl, isManual: preservedMissing > row.quantity, externalId: String(row.id ?? ""), legoElementId: row.element_id ?? null } });
+              await tx.inventoryItem.upsert({ where: { definitionId_partId_colorId: { definitionId: def.id, partId: part.id, colorId: color.id } }, create: { definitionId: def.id, partId: part.id, colorId: color.id, quantity: row.quantity, imageUrl: row.part.part_img_url ?? part.imageUrl, externalId: String(row.id ?? ""), legoElementId: row.element_id ?? null, sectionName: row.is_minifig_part ? "Minifigur" : null }, update: { quantity: Math.max(row.quantity, preservedMissing), imageUrl: row.part.part_img_url ?? part.imageUrl, isManual: preservedMissing > row.quantity, externalId: String(row.id ?? ""), legoElementId: row.element_id ?? null, sectionName: row.is_minifig_part ? "Minifigur" : null } });
             }
           }
           for (const obsolete of old.filter((item) => !normalizedKeys.has(`${item.part.rebrickableId}|${item.color.rebrickableId}`) && !item.isManual)) {

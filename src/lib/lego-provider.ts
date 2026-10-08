@@ -62,7 +62,7 @@ export class RebrickableProvider implements LegoDataProvider {
     for (const figure of minifigures) {
       const parts = await this.fetchPages<RawInventoryRow>(`${API}/minifigs/${encodeURIComponent(figure.set_num)}/parts/?page_size=1000`);
       minifigPartRows += parts.length;
-      results.push(...parts.map((part) => ({ ...part, quantity: part.quantity * figure.quantity })));
+      results.push(...parts.map((part) => ({ ...part, quantity: part.quantity * figure.quantity, is_minifig_part: true })));
     }
     return { id: inventoryId, results, minifigCount: minifigures.length, minifigPartRows };
   }

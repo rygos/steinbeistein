@@ -10,6 +10,7 @@ export type RawInventoryRow = {
   counterpart_of?: string | null;
   counterpart_group?: string | null;
   is_preferred_counterpart?: boolean;
+  is_minifig_part?: boolean;
   element_id?: string | null;
 };
 
@@ -51,6 +52,7 @@ export function normalizeInventory(rows: RawInventoryRow[]): RawInventoryRow[] {
     const existing = combined.get(key);
     if (existing) {
       existing.quantity += row.quantity;
+      existing.is_minifig_part ||= row.is_minifig_part;
       if (!existing.part.part_img_url && row.part.part_img_url) existing.part.part_img_url = row.part.part_img_url;
       if (!existing.element_id && row.element_id) existing.element_id = row.element_id;
       existing.id = [existing.id, row.id].filter((id) => id !== undefined && id !== null && id !== "").join(",");
