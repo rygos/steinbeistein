@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
         else await tx.shoppingItem.delete({ where: { id: ordered.id } });
         await tx.shoppingItem.upsert({ where: { instanceId_inventoryItemId_status: { instanceId: parsed.data.instanceId, inventoryItemId: item.id, status: "RECEIVED" } }, create: { instanceId: parsed.data.instanceId, inventoryItemId: item.id, status: "RECEIVED", quantity }, update: { quantity: { increment: quantity } } });
         const nextMissing = (missing?.quantity ?? 0) - quantity;
-        if (nextMissing) await tx.missingPart.update({ where: { id: missing!.id }, data: { quantity: nextMissing } });
+        if (nextMissing) await tx.missingPart.update({ where: { id: missing!.id }, data: { quantity: nextMissing, confirmed: true } });
         else if (missing) await tx.missingPart.delete({ where: { id: missing.id } });
         if (!item.isManual) await tx.inventoryReview.upsert({ where: { instanceId_inventoryItemId: { instanceId: parsed.data.instanceId, inventoryItemId: item.id } }, create: { instanceId: parsed.data.instanceId, inventoryItemId: item.id }, update: { reviewedAt: new Date() } });
         let remainingReceipt = quantity;

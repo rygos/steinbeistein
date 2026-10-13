@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
       const beforeReviewed = await tx.inventoryReview.findUnique({ where: { instanceId_inventoryItemId: { instanceId: parsed.data.instanceId, inventoryItemId: item.id } }, select: { status: true, note: true } });
       const beforeShopping = await tx.shoppingItem.findMany({ where: { instanceId: parsed.data.instanceId, inventoryItemId: item.id, status: { in: ["WANTED", "ORDERED"] } }, select: { status: true, quantity: true } });
       const next = missing.quantity - found;
-      if (next) await tx.missingPart.update({ where: { id: missing.id }, data: { quantity: next } });
+      if (next) await tx.missingPart.update({ where: { id: missing.id }, data: { quantity: next, confirmed: true } });
       else await tx.missingPart.delete({ where: { id: missing.id } });
       if (!item.isManual) await tx.inventoryReview.upsert({ where: { instanceId_inventoryItemId: { instanceId: parsed.data.instanceId, inventoryItemId: item.id } }, create: { instanceId: parsed.data.instanceId, inventoryItemId: item.id }, update: { reviewedAt: new Date() } });
       const shopping = await tx.shoppingItem.findMany({ where: { instanceId: parsed.data.instanceId, inventoryItemId: item.id, status: { in: ["WANTED", "ORDERED"] } }, orderBy: { status: "asc" } });
@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
       }
       const afterReview = await tx.inventoryReview.findUnique({ where: { instanceId_inventoryItemId: { instanceId: parsed.data.instanceId, inventoryItemId: item.id } } });
       const afterShopping = await tx.shoppingItem.findMany({ where: { instanceId: parsed.data.instanceId, inventoryItemId: item.id, status: { in: ["WANTED", "ORDERED"] } }, select: { status: true, quantity: true }, orderBy: { status: "asc" } });
-      await tx.inventoryChange.create({ data: { instanceId: parsed.data.instanceId, inventoryItemId: item.id, beforeMissing, afterMissing: next, beforeReviewed: Boolean(beforeReviewed), afterReviewed: Boolean(afterReview), beforeStatus: beforeReviewed?.status ?? null, afterStatus: afterReview?.status ?? null, beforeReviewNote: beforeReviewed?.note ?? null, afterReviewNote: afterReview?.note ?? null, beforeShopping, afterShopping, reason: "Teil über die globale Fehlteileliste als gefunden markiert" } });
+      await tx.inventoryChange.create({ data: { instanceId: parsed.data.instanceId, inventoryItemId: item.id, beforeMissing, afterMissing: next, beforeReviewed: Boolean(beforeReviewed) || missing.confirmed || item.isManual, afterReviewed: Boolean(afterReview) || next > 0 || item.isManual, beforeStatus: beforeReviewed?.status ?? null, afterStatus: afterReview?.status ?? null, beforeReviewNote: beforeReviewed?.note ?? null, afterReviewNote: afterReview?.note ?? null, beforeShopping, afterShopping, reason: "Teil über die globale Fehlteileliste als gefunden markiert" } });
       return next;
     });
     return NextResponse.json({ ok: true, remaining });

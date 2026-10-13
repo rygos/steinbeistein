@@ -9,7 +9,7 @@ export async function GET() {
   const [instances, inventory, missingRows, reviews, shopping, definitions, partCount, colorCount, instanceDetails, looseStock, orders, prices, changes] = await Promise.all([
     prisma.setInstance.findMany({ select: { id: true, nickname: true, createdAt: true, definition: { select: { id: true, setNumber: true, name: true, year: true, theme: true, imageUrl: true, pieceCount: true } } } }),
     prisma.inventoryItem.findMany({ where: { isManual: false }, select: { id: true, definitionId: true, partId: true, colorId: true, quantity: true, sectionName: true, part: { select: { partNumber: true, name: true, imageUrl: true, categoryName: true } }, color: { select: { name: true, rgb: true } } } }),
-    prisma.missingPart.findMany({ where: { quantity: { gt: 0 } }, select: { instanceId: true, inventoryItemId: true, quantity: true, inventoryItem: { select: { definitionId: true, partId: true, colorId: true, isManual: true, part: { select: { partNumber: true, name: true, imageUrl: true } }, color: { select: { name: true, rgb: true } } } } } }),
+    prisma.missingPart.findMany({ where: { quantity: { gt: 0 } }, select: { instanceId: true, inventoryItemId: true, quantity: true, confirmed: true, inventoryItem: { select: { definitionId: true, partId: true, colorId: true, isManual: true, part: { select: { partNumber: true, name: true, imageUrl: true } }, color: { select: { name: true, rgb: true } } } } } }),
     prisma.inventoryReview.findMany({ where: { inventoryItem: { isManual: false } }, select: { instanceId: true, status: true, inventoryItem: { select: { id: true, quantity: true, definitionId: true } } } }),
     prisma.shoppingItem.findMany({ select: { status: true, quantity: true } }),
     prisma.setDefinition.count(), prisma.part.count(), prisma.color.count(),
@@ -45,7 +45,7 @@ export async function GET() {
     if (row.inventoryItem.isManual) continue;
     missingByInstance.set(row.instanceId, (missingByInstance.get(row.instanceId) ?? 0) + row.quantity);
     const existingItem = inventoryById.get(row.inventoryItemId);
-    if (existingItem) {
+    if (existingItem && row.confirmed) {
       const marked = reviewedByInstance.get(row.instanceId) ?? new Map<string, number>();
       marked.set(existingItem.id, existingItem.quantity);
       reviewedByInstance.set(row.instanceId, marked);

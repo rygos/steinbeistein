@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PrismaClient } from "@prisma/client";
 import { NextRequest } from "next/server";
+import { z } from "zod";
 
 const testUrl = process.env.TEST_DATABASE_URL;
 const dbSuite = testUrl ? describe : describe.skip;
@@ -31,7 +32,7 @@ dbSuite("collection database integration", () => {
   });
 
   afterAll(async () => {
-    await db.setDefinition.deleteMany({ where: { setNumber } });
+    await db.setDefinition.deleteMany({ where: { setNumber: { in: [setNumber, `TN-${suffix}`] } } });
     await db.storageLocation.deleteMany({ where: { name: { startsWith: "Test location " } } });
     await db.part.deleteMany({ where: { rebrickableId: partNumber } });
     await db.color.deleteMany({ where: { name: "Integration color" } });
@@ -42,6 +43,31 @@ dbSuite("collection database integration", () => {
     const instances = await db.setInstance.findMany({ where: { definition: { setNumber } }, include: { missing: true } });
     expect(instances).toHaveLength(2);
     expect(instances.map((instance) => instance.missing.reduce((sum, row) => sum + row.quantity, 0)).sort((a, b) => a - b)).toEqual([2, 8]);
+  });
+
+  it("starts a newly added instance fully missing until its inventory is checked", async () => {
+    const part = await db.part.findFirstOrThrow({ where: { rebrickableId: partNumber } });
+    const color = await db.color.findFirstOrThrow({ where: { name: "Integration color" } });
+    const newSetNumber = `TN-${suffix}`;
+    await db.setDefinition.create({ data: { setNumber: newSetNumber, name: "New integration model", importMetadata: { minifigInventoryVersion: 2 }, inventory: { create: { partId: part.id, colorId: color.id, quantity: 8 } } } });
+    const { POST: addInstance } = await import("@/app/api/sets/route");
+    const { PATCH } = await import("@/app/api/instances/[id]/route");
+    const request = (method: string, body: unknown) => new NextRequest("http://localhost/api", { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const responseSchema = z.object({ id: z.string(), missing: z.number(), checkedPercent: z.number(), complete: z.number(), inventory: z.array(z.object({ id: z.string(), missing: z.number(), reviewed: z.boolean() })) });
+    const added = await addInstance(request("POST", { setNumber: newSetNumber }));
+    if (added.status !== 201) throw new Error(JSON.stringify(await added.json()));
+    expect(added.status).toBe(201);
+    const initial = responseSchema.parse(await added.json());
+    expect(initial).toMatchObject({ missing: 8, checkedPercent: 0, complete: 0, inventory: [{ missing: 8, reviewed: false }] });
+    const inventoryItem = initial.inventory[0];
+    if (!inventoryItem) throw new Error("New instance has no inventory item.");
+
+    const counted = await PATCH(request("PATCH", { inventoryItemId: inventoryItem.id, setMissing: 3 }), { params: Promise.resolve({ id: initial.id }) });
+    const countedInstance = responseSchema.parse(await counted.json());
+    expect(countedInstance).toMatchObject({ missing: 3, checkedPercent: 100, complete: 62.5, inventory: [{ missing: 3, reviewed: true }] });
+
+    const complete = await PATCH(request("PATCH", { inventoryItemId: inventoryItem.id, setMissing: 0 }), { params: Promise.resolve({ id: initial.id }) });
+    expect(responseSchema.parse(await complete.json())).toMatchObject({ missing: 0, checkedPercent: 100, complete: 100, inventory: [{ missing: 0, reviewed: true }] });
   });
 
   it("updates an instance and the global shopping list through the API handlers", async () => {

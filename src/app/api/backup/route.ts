@@ -81,8 +81,8 @@ export async function POST(request: NextRequest) {
         const saved = await tx.inventoryItem.upsert({ where: { definitionId_partId_colorId: { definitionId, partId, colorId } }, create: { ...value, definitionId, partId, colorId }, update: {} }); itemIds.set(value.id, saved.id);
       }
       for (const raw of parsed.data.missing) {
-        const value = raw as { instanceId: string; inventoryItemId: string; quantity: number };
-        const instanceId = instanceIds.get(value.instanceId), inventoryItemId = itemIds.get(value.inventoryItemId); if (instanceId && inventoryItemId) await tx.missingPart.upsert({ where: { instanceId_inventoryItemId: { instanceId, inventoryItemId } }, create: { instanceId, inventoryItemId, quantity: value.quantity }, update: {} });
+        const value = raw as { instanceId: string; inventoryItemId: string; quantity: number; confirmed?: boolean };
+        const instanceId = instanceIds.get(value.instanceId), inventoryItemId = itemIds.get(value.inventoryItemId); if (instanceId && inventoryItemId) await tx.missingPart.upsert({ where: { instanceId_inventoryItemId: { instanceId, inventoryItemId } }, create: { instanceId, inventoryItemId, quantity: value.quantity, confirmed: value.confirmed ?? true }, update: {} });
       }
       for (const raw of parsed.data.reviews) {
         const value = raw as { instanceId: string; inventoryItemId: string; reviewedAt?: string; status?: "PRESENT" | "DAMAGED" | "WRONG_COLOR" | "OTHER"; note?: string | null };

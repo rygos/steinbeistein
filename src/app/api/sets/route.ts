@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
   const instanceIds = instances.map((instance) => instance.id);
   const [totals, missingRows, reviews] = await Promise.all([
     prisma.inventoryItem.groupBy({ by: ["definitionId"], where: { isManual: false }, _sum: { quantity: true }, _count: { _all: true } }),
-    prisma.missingPart.findMany({ where: { instanceId: { in: instanceIds }, quantity: { gt: 0 }, inventoryItem: { isManual: false } }, select: { instanceId: true, inventoryItemId: true, quantity: true, inventoryItem: { select: { quantity: true } } } }),
+    prisma.missingPart.findMany({ where: { instanceId: { in: instanceIds }, quantity: { gt: 0 }, inventoryItem: { isManual: false } }, select: { instanceId: true, inventoryItemId: true, quantity: true, confirmed: true, inventoryItem: { select: { quantity: true } } } }),
     prisma.inventoryReview.findMany({ where: { instanceId: { in: instanceIds }, inventoryItem: { isManual: false } }, select: { instanceId: true, inventoryItemId: true, inventoryItem: { select: { quantity: true } } } }),
   ]);
   const totalMap = new Map(totals.map((entry) => [entry.definitionId, entry._sum.quantity ?? 0]));
@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
   }
   for (const row of missingRows) {
     const items = reviewedByInstance.get(row.instanceId) ?? new Map<string, number>();
-    items.set(row.inventoryItemId, row.inventoryItem.quantity);
+    if (row.confirmed) items.set(row.inventoryItemId, row.inventoryItem.quantity);
     reviewedByInstance.set(row.instanceId, items);
     const missing = missingByInstance.get(row.instanceId) ?? { quantity: 0, positions: new Set<string>() };
     missing.quantity += row.quantity;
@@ -120,7 +120,13 @@ export async function POST(request: NextRequest) {
       if (!instance) return NextResponse.json({ error: "Set-Exemplar nicht gefunden." }, { status: 404 });
       return NextResponse.json(instanceDto(instance));
     }
-    const instance = await prisma.setInstance.create({ data: { definitionId: definition.id, nickname: parsed.data.nickname?.trim() || null }, include });
+    const instance = await prisma.$transaction(async (tx) => {
+      const created = await tx.setInstance.create({ data: { definitionId: definition.id, nickname: parsed.data.nickname?.trim() || null } });
+      const inventory = await tx.inventoryItem.findMany({ where: { definitionId: definition.id, isManual: false }, select: { id: true, quantity: true } });
+      if (!inventory.length) throw new Error("Das Set enthält noch kein importiertes Inventar.");
+      await tx.missingPart.createMany({ data: inventory.map((item) => ({ instanceId: created.id, inventoryItemId: item.id, quantity: item.quantity, confirmed: false })) });
+      return tx.setInstance.findUniqueOrThrow({ where: { id: created.id }, include });
+    });
     return NextResponse.json(instanceDto(instance), { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Set konnte nicht importiert werden.";

@@ -36,19 +36,25 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
         const old = await tx.missingPart.findUnique({ where: { instanceId_inventoryItemId: { instanceId: id, inventoryItemId: inventory.id } } });
         const oldReview = await tx.inventoryReview.findUnique({ where: { instanceId_inventoryItemId: { instanceId: id, inventoryItemId: inventory.id } } });
         const beforeMissing = old?.quantity ?? 0;
-        const beforeReviewed = Boolean(oldReview) || beforeMissing > 0 || inventory.isManual;
+        const beforeReviewed = Boolean(oldReview) || Boolean(old?.confirmed) || inventory.isManual;
         const beforeShopping = await tx.shoppingItem.findMany({ where: { instanceId: id, inventoryItemId: inventory.id, status: { in: ["WANTED", "ORDERED"] } }, select: { status: true, quantity: true } });
         let afterMissing = beforeMissing;
+        let afterConfirmed = Boolean(old?.confirmed);
         if (parsed.data.delta !== undefined || parsed.data.setMissing !== undefined) {
           afterMissing = validateMissingQuantity(parsed.data.setMissing ?? (beforeMissing + (parsed.data.delta ?? 0)), inventory.quantity);
           if (afterMissing === 0) await tx.missingPart.deleteMany({ where: { instanceId: id, inventoryItemId: inventory.id } });
-          else await tx.missingPart.upsert({ where: { instanceId_inventoryItemId: { instanceId: id, inventoryItemId: inventory.id } }, create: { instanceId: id, inventoryItemId: inventory.id, quantity: afterMissing }, update: { quantity: afterMissing } });
+          else await tx.missingPart.upsert({ where: { instanceId_inventoryItemId: { instanceId: id, inventoryItemId: inventory.id } }, create: { instanceId: id, inventoryItemId: inventory.id, quantity: afterMissing, confirmed: true }, update: { quantity: afterMissing, confirmed: true } });
+          afterConfirmed = afterMissing > 0;
         }
         if (parsed.data.reviewed === false) {
           if (afterMissing > 0) throw new Error("Ein Teil mit eingetragener Fehlmenge kann nicht als ungeprüft markiert werden.");
           await tx.inventoryReview.deleteMany({ where: { instanceId: id, inventoryItemId: inventory.id } });
         } else if (parsed.data.reviewed === true || parsed.data.reviewStatus !== undefined || parsed.data.reviewNote !== undefined || parsed.data.delta !== undefined || parsed.data.setMissing !== undefined) {
           await tx.inventoryReview.upsert({ where: { instanceId_inventoryItemId: { instanceId: id, inventoryItemId: inventory.id } }, create: { instanceId: id, inventoryItemId: inventory.id, status: parsed.data.reviewStatus ?? InventoryItemStatus.PRESENT, note: parsed.data.reviewNote ?? null }, update: { reviewedAt: new Date(), ...(parsed.data.reviewStatus ? { status: parsed.data.reviewStatus } : {}), ...(parsed.data.reviewNote !== undefined ? { note: parsed.data.reviewNote } : {}) } });
+        }
+        if (afterMissing > 0 && (parsed.data.reviewed === true || parsed.data.reviewStatus !== undefined || parsed.data.reviewNote !== undefined)) {
+          await tx.missingPart.updateMany({ where: { instanceId: id, inventoryItemId: inventory.id }, data: { confirmed: true } });
+          afterConfirmed = true;
         }
         if (parsed.data.sectionName !== undefined) await tx.inventoryItem.update({ where: { id: inventory.id }, data: { sectionName: parsed.data.sectionName || null } });
         const afterReview = parsed.data.reviewed === false ? null : await tx.inventoryReview.findUnique({ where: { instanceId_inventoryItemId: { instanceId: id, inventoryItemId: inventory.id } } });
@@ -62,7 +68,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
             else await tx.shoppingItem.delete({ where: { id: row.id } });
           }
         }
-        const afterReviewed = Boolean(afterReview) || afterMissing > 0 || inventory.isManual;
+        const afterReviewed = Boolean(afterReview) || (afterMissing > 0 && afterConfirmed) || inventory.isManual;
         const afterStatus = afterReview?.status ?? null;
         const afterShopping = await tx.shoppingItem.findMany({ where: { instanceId: id, inventoryItemId: inventory.id, status: { in: ["WANTED", "ORDERED"] } }, select: { status: true, quantity: true }, orderBy: { status: "asc" } });
         if (afterMissing !== beforeMissing || beforeReviewed !== afterReviewed || oldReview?.status !== afterStatus || oldReview?.note !== (afterReview?.note ?? null)) {

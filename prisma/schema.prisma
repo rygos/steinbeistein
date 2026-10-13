@@ -167,6 +167,7 @@ model MissingPart {
   inventoryItemId String
   inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
   quantity        Int
+  confirmed       Boolean       @default(true)
   updatedAt       DateTime      @updatedAt
 
   @@unique([instanceId, inventoryItemId])

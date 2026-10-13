@@ -19,9 +19,9 @@ export function reviewedPercent(total: number, reviewed: number) {
 export function summarize(instance: FullInstance) {
   const items = instance.definition.inventory.filter((item) => !item.isManual);
   const itemIds = new Set(items.map((item) => item.id));
-  const missingById = new Map(instance.missing.map((item) => [item.inventoryItemId, item.quantity]));
+  const missingById = new Map(instance.missing.map((item) => [item.inventoryItemId, item]));
   const reviewedIds = new Set(instance.reviews.map((review) => review.inventoryItemId));
-  for (const [itemId, quantity] of missingById) if (quantity > 0 && itemIds.has(itemId)) reviewedIds.add(itemId);
+  for (const [itemId, missing] of missingById) if (missing.confirmed && missing.quantity > 0 && itemIds.has(itemId)) reviewedIds.add(itemId);
   const reviewedItems = items.filter((item) => reviewedIds.has(item.id));
   const total = items.reduce((sum, item) => sum + item.quantity, 0);
   const reviewedQuantity = reviewedItems.reduce((sum, item) => sum + item.quantity, 0);
@@ -34,5 +34,5 @@ export function instanceDto(instance: FullInstance) {
   return { id: instance.id, nickname: instance.nickname, createdAt: instance.createdAt, storageLocationId: instance.storageLocationId, storageLocation: instance.storageLocation ?? null, condition: instance.condition, hasInstructions: instance.hasInstructions, instructionsCondition: instance.instructionsCondition, hasBox: instance.hasBox, boxCondition: instance.boxCondition, notes: instance.notes, collectionStatus: instance.collectionStatus, purchasePrice: instance.purchasePrice, purchaseCurrency: instance.purchaseCurrency, purchasedAt: instance.purchasedAt,
     definition: { id: instance.definition.id, setNumber: instance.definition.setNumber, name: instance.definition.name, year: instance.definition.year, theme: instance.definition.theme, imageUrl: instance.definition.imageUrl, pieceCount: instance.definition.pieceCount },
     inventoryDelta: instance.definition.importMetadata,
-    ...summarize(instance), inventory: instance.definition.inventory.map((item) => { const review = instance.reviews.find((entry) => entry.inventoryItemId === item.id); const missing = instance.missing.find((entry) => entry.inventoryItemId === item.id)?.quantity ?? 0; return { id: item.id, quantity: item.quantity, isManual: item.isManual, sectionName: item.sectionName, status: missing ? "MISSING" : review?.status ?? "UNCHECKED", reviewNote: review?.note ?? null, part: { id: item.part.id, number: item.part.partNumber, name: item.part.name, imageUrl: item.imageUrl ?? item.part.imageUrl, categoryId: item.part.categoryId, categoryName: item.part.categoryName }, color: { id: item.color.id, sourceId: item.color.rebrickableId, name: item.color.name, rgb: item.color.rgb }, missing, reviewed: item.isManual || Boolean(review) || missing > 0 }; }) };
+    ...summarize(instance), inventory: instance.definition.inventory.map((item) => { const review = instance.reviews.find((entry) => entry.inventoryItemId === item.id); const missingEntry = instance.missing.find((entry) => entry.inventoryItemId === item.id); const missing = missingEntry?.quantity ?? 0; return { id: item.id, quantity: item.quantity, isManual: item.isManual, sectionName: item.sectionName, status: missing ? "MISSING" : review?.status ?? "UNCHECKED", reviewNote: review?.note ?? null, part: { id: item.part.id, number: item.part.partNumber, name: item.part.name, imageUrl: item.imageUrl ?? item.part.imageUrl, categoryId: item.part.categoryId, categoryName: item.part.categoryName }, color: { id: item.color.id, sourceId: item.color.rebrickableId, name: item.color.name, rgb: item.color.rgb }, missing, reviewed: item.isManual || Boolean(review) || Boolean(missingEntry?.confirmed) }; }) };
 }

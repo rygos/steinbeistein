@@ -32,11 +32,11 @@ export async function POST(request: NextRequest) {
       }
       const nextMissing = missing.quantity - parsed.data.quantity;
       if (nextMissing === 0) await tx.missingPart.delete({ where: { id: missing.id } });
-      else await tx.missingPart.update({ where: { id: missing.id }, data: { quantity: nextMissing } });
+      else await tx.missingPart.update({ where: { id: missing.id }, data: { quantity: nextMissing, confirmed: true } });
       const review = await tx.inventoryReview.findUnique({ where: { instanceId_inventoryItemId: { instanceId: instance.id, inventoryItemId: item.id } } });
       await tx.inventoryReview.upsert({ where: { instanceId_inventoryItemId: { instanceId: instance.id, inventoryItemId: item.id } }, create: { instanceId: instance.id, inventoryItemId: item.id }, update: { reviewedAt: new Date() } });
       const afterShopping = await tx.shoppingItem.findMany({ where: { instanceId: instance.id, inventoryItemId: item.id, status: { in: ["WANTED", "ORDERED"] } }, select: { status: true, quantity: true }, orderBy: { status: "asc" } });
-      await tx.inventoryChange.create({ data: { instanceId: instance.id, inventoryItemId: item.id, beforeMissing: missing.quantity, afterMissing: nextMissing, beforeReviewed: Boolean(review) || item.isManual, afterReviewed: true, reason: "Aus eigenem Teilebestand zugewiesen", beforeShopping: priorShopping, afterShopping, stockAllocations } });
+      await tx.inventoryChange.create({ data: { instanceId: instance.id, inventoryItemId: item.id, beforeMissing: missing.quantity, afterMissing: nextMissing, beforeReviewed: Boolean(review) || missing.confirmed || item.isManual, afterReviewed: true, reason: "Aus eigenem Teilebestand zugewiesen", beforeShopping: priorShopping, afterShopping, stockAllocations } });
       let excess = Math.max(0, priorShopping.reduce((sum, row) => sum + row.quantity, 0) - nextMissing);
       for (const row of await tx.shoppingItem.findMany({ where: { instanceId: instance.id, inventoryItemId: item.id, status: { in: ["WANTED", "ORDERED"] } }, orderBy: { status: "asc" } })) {
         if (!excess) break;
