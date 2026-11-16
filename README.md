@@ -68,10 +68,11 @@ Das mitgelieferte `.env.example` enthält Platzhalter. Ersetze Passwort und API-
 
 ## Installation in Portainer
 
-1. Öffne **Stacks → Add stack** und wähle das Git-Repository oder lade `docker-compose.yml` hoch.
-2. Trage die Variablen `POSTGRES_PASSWORD`, `REBRICKABLE_API_KEY` und `DATABASE_URL` im Stack-Environment ein. `DATABASE_URL` muss auf `db:5432` zeigen.
-3. Baue und deploye den Stack. Portainer verwaltet das benannte Volume `postgres_data`; sichere es regelmäßig.
-4. Veröffentliche Port 3000 über den Reverse Proxy deiner Wahl und aktiviere dort TLS.
+1. Öffne **Stacks → Add stack**, wähle Git-Repository und trage `https://github.com/rygos/steinbeistein.git`, Branch `main` und `docker-compose.yml` ein.
+2. Setze `POSTGRES_PASSWORD`, `DATABASE_URL`, `APP_PASSWORD` und `AUTH_SECRET` im Stack-Environment. `APP_PASSWORD` ist das gemeinsame Login-Passwort, `AUTH_SECRET` muss mindestens 32 Zeichen lang und zufällig sein.
+3. Stelle sicher, dass Docker und Traefik das externe Netzwerk `proxy` teilen und der konfigurierte Zertifikatsresolver `tls_resolver` heißt. Die Compose-Datei routet `bricks.rygos.de` über HTTPS.
+4. Trage optional `REBRICKABLE_API_KEY` und `BRICKOWL_API_KEY` ein, damit Suche/Import neuer Sets und Marktwerte funktionieren.
+5. Portainer baut und deployt den Stack. Das benannte Volume `postgres_data` speichert die Sammlung dauerhaft; der Backup-Container erstellt tägliche Dumps in `postgres_backups`.
 
 Für Updates den Stack mit dem neuen Quellstand erneut bauen. Das Datenbankschema wird beim App-Start additiv synchronisiert; vor einem Update wird ein Backup empfohlen.
 
@@ -85,6 +86,8 @@ Für Updates den Stack mit dem neuen Quellstand erneut bauen. Das Datenbankschem
 | `BRICKOWL_API_KEY` | Server-Key für die BrickOwl Catalog API |
 | `BRICKOWL_COUNTRY` | Regionale Zielländereinstellung, derzeit für Preisverläufe nicht benötigt |
 | `NEXT_PUBLIC_APP_URL` | Öffentliche Basis-URL für spätere Links/Exporte |
+| `APP_PASSWORD` | Gemeinsames Passwort für den Zugang zur App |
+| `AUTH_SECRET` | Zufälliger Signierschlüssel für 14-Tage-HttpOnly-Sessions |
 
 Der API-Key wird ausschließlich serverseitig gelesen und nicht an Browsercode gesendet. Die API-Verbindung kann in **Diagnose** getestet werden. Ohne Key funktionieren lokale Seiten und bereits gespeicherte Daten; die externe Suche meldet die fehlende Konfiguration.
 
