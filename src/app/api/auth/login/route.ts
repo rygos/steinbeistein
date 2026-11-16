@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { authCookieName, createSessionToken, sessionMaxAge, verifyPassword } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
-  if (request.headers.get("origin") !== request.nextUrl.origin) return NextResponse.json({ error: "Ungültige Anfrage." }, { status: 403 });
   const body: unknown = await request.json().catch(() => null);
   if (typeof body !== "object" || body === null || !("password" in body) || typeof body.password !== "string") return NextResponse.json({ error: "Passwort fehlt." }, { status: 400 });
   try {
