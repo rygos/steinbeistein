@@ -3,6 +3,7 @@ import Script from "next/script";
 import "./globals.css";
 import "./polish.css";
 import "./inventory-mode.css";
+import "./login.css";
 
 export const metadata: Metadata = { title: "Stein für Stein", description: "Deine LEGO-Sets, ihre Teile und die gemeinsame Fehlteileliste.", icons: { icon: "/icon.svg" }, manifest: "/manifest.webmanifest", appleWebApp: { capable: true, title: "Stein für Stein", statusBarStyle: "default" } };
 

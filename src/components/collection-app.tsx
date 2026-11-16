@@ -520,7 +520,7 @@ export default function CollectionApp() {
 
     <GlobalSearch onOpenSet={(id) => { setPage("sets"); void openInstance(id); }} onOpenPart={(id, partNumber) => { setPage("sets"); setSearch(partNumber); void openInstance(id, "all"); }} />
     <main className="main-area">
-      <header className="topbar"><div className="breadcrumbs"><span>Sammlung</span>{selected && <><CaretRight size={13} /><span>{selected.definition.setNumber}</span></>}</div><div className="top-actions"><button className="icon-button" aria-label="Neu laden" onClick={() => void refresh()}><ArrowsClockwise size={18} /></button><button className="avatar" aria-label="Sammlerprofil">S</button></div></header>
+      <header className="topbar"><div className="breadcrumbs"><span>Sammlung</span>{selected && <><CaretRight size={13} /><span>{selected.definition.setNumber}</span></>}</div><div className="top-actions"><button className="icon-button" aria-label="Neu laden" onClick={() => void refresh()}><ArrowsClockwise size={18} /></button><button className="icon-button" aria-label="Abmelden" title="Abmelden" onClick={() => { void fetch("/api/auth/logout", { method: "POST" }).then(() => window.location.assign("/login")); }}>Abmelden</button></div></header>
 
       {selected ? <section className="content detail-view">
         <div className="heading-actions"><button className="back-link" onClick={() => setSelected(null)}><ArrowLeft size={16} />Zurück zu Meine Sets</button><button className="button secondary" onClick={() => setTab("details")}>Exemplar, Karton & Anleitung</button></div>

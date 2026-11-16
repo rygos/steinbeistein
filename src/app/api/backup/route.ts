@@ -5,6 +5,7 @@ import { manualPartCacheKey, manualPriceCurrencies, manualSetCacheKey } from "@/
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 const records = z.array(z.record(z.unknown()));
 const manualBrickOwlPriceSchema = z.object({
   boid: z.string(),

@@ -3,12 +3,26 @@ services:
     build: .
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL muss in .env gesetzt sein}
+      APP_PASSWORD: ${APP_PASSWORD:?APP_PASSWORD muss gesetzt sein}
+      AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET muss gesetzt sein}
       REBRICKABLE_API_KEY: ${REBRICKABLE_API_KEY:-}
       BRICKOWL_API_KEY: ${BRICKOWL_API_KEY:-}
       BRICKOWL_COUNTRY: ${BRICKOWL_COUNTRY:-DE}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://bricks.rygos.de}
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=proxy
+      - traefik.http.routers.steinbeistein.rule=Host(`bricks.rygos.de`)
+      - traefik.http.routers.steinbeistein.entrypoints=websecure
+      - traefik.http.routers.steinbeistein.tls=true
+      - traefik.http.routers.steinbeistein.tls.certresolver=tls_resolver
+      - traefik.http.services.steinbeistein.loadbalancer.server.port=3000
+    networks:
+      - default
+      - proxy
     depends_on:
       db:
         condition: service_healthy
@@ -54,3 +68,6 @@ services:
 volumes:
   postgres_data:
   postgres_backups:
+networks:
+  proxy:
+    external: true
