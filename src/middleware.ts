@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authCookieName, hasValidSession } from "@/lib/auth";
 
 export async function middleware(request: NextRequest) {
-  if (request.nextUrl.pathname.startsWith("/api/health") || request.nextUrl.pathname === "/api/auth/login" || request.nextUrl.pathname === "/api/auth/logout") return NextResponse.next();
+  if (request.nextUrl.pathname === "/login" || request.nextUrl.pathname.startsWith("/api/health") || request.nextUrl.pathname === "/api/auth/login" || request.nextUrl.pathname === "/api/auth/logout") return NextResponse.next();
   if (await hasValidSession(request)) return NextResponse.next();
   if (request.nextUrl.pathname.startsWith("/api/")) return NextResponse.json({ error: "Anmeldung erforderlich." }, { status: 401 });
   if (request.nextUrl.pathname.startsWith("/_next/") || request.nextUrl.pathname === "/icon.svg" || request.nextUrl.pathname === "/manifest.webmanifest") return NextResponse.next();
